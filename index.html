@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clue Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --wall: #2b1d2e;
+    --wall-stripe: #33233a;
+    --paper: #f3ead8;
+    --ink: #2a2230;
+    --who: #ffd966;
+    --what: #ff9fb2;
+    --when: #9fd8ff;
+    --where: #b6e3a0;
+    --why: #d9b3ff;
+    --pin: #c0392b;
+    --type: "Special Elite", "Courier New", monospace;
+    --hand: "Caveat", "Bradley Hand", "Segoe Print", cursive;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    background:
+      repeating-linear-gradient(90deg, var(--wall) 0 46px, var(--wall-stripe) 46px 92px);
+    color: var(--paper);
+    font-family: var(--type);
+  }
+  header {
+    padding: 28px 20px 8px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 {
+    margin: 0;
+    font-weight: 400;
+    font-size: clamp(28px, 6vw, 52px);
+    letter-spacing: 0.01em;
+    line-height: 1.05;
+  }
+  .sub { margin: 8px 0 0; opacity: .8; font-size: 16px; max-width: 60ch; line-height: 1.4; }
+  .count { margin-top: 6px; opacity: .65; font-size: 14px; }
+
+  .toolbar {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: color-mix(in srgb, var(--wall) 92%, transparent);
+    backdrop-filter: blur(6px);
+    padding: 12px 20px;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .chip {
+    font: inherit; font-size: 15px;
+    padding: 7px 14px; border-radius: 999px;
+    border: 2px solid var(--paper); background: transparent; color: var(--paper);
+    cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
+  .chip[data-type]::before {
+    content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 7px; background: var(--c);
+    border: 1px solid rgba(0,0,0,.3);
+  }
+  .chip[aria-pressed="true"][data-type]::before { border-color: var(--ink); }
+  .spacer { flex: 1; }
+  .add {
+    font: inherit; font-size: 17px;
+    padding: 10px 20px; border-radius: 6px; border: none;
+    background: var(--who); color: var(--ink); cursor: pointer;
+    box-shadow: 0 3px 0 rgba(0,0,0,.35);
+  }
+  .add:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+
+  .banner {
+    max-width: 1200px; margin: 8px auto 0; padding: 10px 20px;
+    font-size: 14px; color: #ffd0a0;
+  }
+  .banner[hidden] { display: none; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 16px 20px 120px; }
+  .board { columns: 240px; column-gap: 22px; }
+  .note {
+    break-inside: avoid;
+    display: block;
+    margin: 0 0 24px;
+    padding: 26px 18px 14px;
+    background: var(--c);
+    color: var(--ink);
+    position: relative;
+    box-shadow: 0 6px 10px rgba(0,0,0,.4);
+    transform: rotate(var(--r));
+    animation: stick .25s ease-out;
+  }
+  .note::before { /* pin */
+    content: ""; position: absolute; top: 8px; left: 50%; width: 12px; height: 12px;
+    margin-left: -6px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ff8a7a, var(--pin) 60%);
+    box-shadow: 0 2px 3px rgba(0,0,0,.45);
+  }
+  @keyframes stick { from { transform: rotate(var(--r)) scale(1.08); opacity: 0; } }
+  .meta { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; opacity: .8; }
+  .body {
+    font-family: var(--hand); font-weight: 700; font-size: 25px; line-height: 1.12;
+    margin: 8px 0 6px; overflow-wrap: anywhere; white-space: pre-wrap;
+  }
+  .when-posted { font-size: 12px; opacity: .6; }
+  .empty { text-align: center; opacity: .75; padding: 60px 10px; font-size: 18px; }
+
+  dialog {
+    border: none; padding: 0; background: transparent; color: var(--ink);
+    width: min(440px, calc(100vw - 24px));
+  }
+  dialog::backdrop { background: rgba(10, 5, 14, .72); }
+  form {
+    background: var(--paper); padding: 22px 20px 20px; border-radius: 4px;
+    box-shadow: 0 14px 40px rgba(0,0,0,.55);
+    font-family: var(--type);
+  }
+  form h2 { margin: 0 0 14px; font-weight: 400; font-size: 24px; }
+  label { display: block; font-size: 15px; margin: 14px 0 6px; }
+  input[type=text], textarea {
+    width: 100%; font: inherit; font-size: 16px; padding: 10px;
+    border: 2px solid var(--ink); border-radius: 4px; background: #fffaf0; color: var(--ink);
+  }
+  textarea { min-height: 110px; resize: vertical; font-family: var(--hand); font-size: 22px; font-weight: 700; line-height: 1.1; }
+  fieldset { border: none; padding: 0; margin: 14px 0 0; }
+  legend { font-size: 15px; padding: 0; margin-bottom: 8px; }
+  .types { display: flex; flex-wrap: wrap; gap: 8px; }
+  .types label { margin: 0; }
+  .types input { position: absolute; opacity: 0; pointer-events: none; }
+  .types span {
+    display: inline-block; padding: 8px 14px; border-radius: 4px; cursor: pointer;
+    background: var(--c); border: 2px solid transparent; font-size: 16px;
+  }
+  .types input:checked + span { border-color: var(--ink); box-shadow: 0 3px 0 var(--ink); transform: translateY(-2px); }
+  .types input:focus-visible + span { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .hint { font-size: 12px; opacity: .6; text-align: right; margin-top: 4px; }
+  .err { color: #a3190f; font-size: 14px; min-height: 18px; margin-top: 10px; }
+  .actions { display: flex; gap: 10px; margin-top: 8px; }
+  .actions button {
+    font: inherit; font-size: 17px; padding: 11px 18px; border-radius: 4px; cursor: pointer;
+    border: 2px solid var(--ink);
+  }
+  .actions .post { background: var(--ink); color: var(--paper); flex: 1; }
+  .actions .cancel { background: transparent; color: var(--ink); }
+  .actions button:disabled { opacity: .5; cursor: wait; }
+
+  :focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .note { animation: none; } }
+  @media (max-width: 520px) { .board { columns: 2 140px; column-gap: 14px; } .body { font-size: 21px; } .note { padding: 24px 12px 12px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <div class="count" id="count"></div>
+</header>
+
+<div class="toolbar" role="toolbar" aria-label="Filter clues">
+  <button class="chip" aria-pressed="true" data-filter="all">All</button>
+  <button class="chip" data-type="Suspect"   style="--c:var(--who)"   aria-pressed="false" data-filter="who">Who</button>
+  <button class="chip" data-type="Weapon"  style="--c:var(--what)"  aria-pressed="false" data-filter="what">What</button>
+  <button class="chip" data-type="Time of Death"  style="--c:var(--when)"  aria-pressed="false" data-filter="when">When</button>
+  <button class="chip" data-type="Room of Crime" style="--c:var(--where)" aria-pressed="false" data-filter="where">Where</button>
+  <button class="chip" data-type="Motive"   style="--c:var(--why)"   aria-pressed="false" data-filter="why">Why</button>
+  <span class="spacer"></span>
+  <button class="add" id="openForm">Add a clue</button>
+</div>
+
+<div class="banner" id="demoBanner" hidden>
+  Demo mode: clues are only saved in this browser. Add your Firebase settings in the CONFIG block to share the board with everyone.
+</div>
+
+<main>
+  <div class="board" id="board" aria-live="polite"></div>
+  <div class="empty" id="empty" hidden>No clues on the wall yet. Be the first to pin one.</div>
+</main>
+
+<dialog id="dlg">
+  <form id="form" method="dialog" novalidate>
+    <h2>Pin a clue</h2>
+
+    <label for="group">Group name or number</label>
+    <input type="text" id="group" maxlength="30" autocomplete="off" required>
+
+    <fieldset>
+      <legend>Clue type</legend>
+      <div class="types">
+        <label><input type="radio" name="type" value="who"   required><span style="--c:var(--who)">Who</span></label>
+        <label><input type="radio" name="type" value="what"><span style="--c:var(--what)">What</span></label>
+        <label><input type="radio" name="type" value="when"><span style="--c:var(--when)">When</span></label>
+        <label><input type="radio" name="type" value="where"><span style="--c:var(--where)">Where</span></label>
+        <label><input type="radio" name="type" value="why"><span style="--c:var(--why)">Why</span></label>
+      </div>
+    </fieldset>
+
+    <label for="text">What did you find out?</label>
+    <textarea id="text" maxlength="280" required></textarea>
+    <div class="hint"><span id="chars">0</span>/280</div>
+
+    <div class="err" id="err" role="alert"></div>
+    <div class="actions">
+      <button type="button" class="cancel" id="cancel">Cancel</button>
+      <button type="submit" class="post" id="post">Pin it to the board</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+/* ============================ CONFIG ============================ */
+const CONFIG = {
+  title: "Murder at Haus QSA: Clue Board",
+  subtitle: "Found something? Pin it here so every group can see it.",
+  // Paste your Firebase web app settings here (Project settings > Your apps > Web app).
+  // Leave apiKey empty to run in demo mode.
+  firebase: {
+    apiKey: "",
+    authDomain: "",
+    projectId: "",
+    appId: ""
+  },
+  collection: "clues",
+  cooldownSeconds: 10      // minimum time between posts from one phone
+};
+/* ================================================================ */
+
+const TYPES = { who: "Who", what: "What", when: "When", where: "Where", why: "Why" };
+const $ = (id) => document.getElementById(id);
+
+document.title = CONFIG.title;
+$("title").textContent = CONFIG.title;
+$("subtitle").textContent = CONFIG.subtitle;
+
+let clues = [];
+let filter = "all";
+let backend;
+
+/* ---------- Backends ---------- */
+async function startFirebase() {
+  const base = "https://www.gstatic.com/firebasejs/10.12.2/";
+  const { initializeApp } = await import(base + "firebase-app.js");
+  const fs = await import(base + "firebase-firestore.js");
+  const app = initializeApp(CONFIG.firebase);
+  const db = fs.getFirestore(app);
+  const col = fs.collection(db, CONFIG.collection);
+  return {
+    subscribe(cb) {
+      const q = fs.query(col, fs.orderBy("createdAt", "desc"), fs.limit(500));
+      return fs.onSnapshot(q, (snap) => {
+        cb(snap.docs.map((d) => {
+          const v = d.data();
+          const ms = v.createdAt && v.createdAt.toMillis ? v.createdAt.toMillis() : Date.now();
+          return { id: d.id, group: v.group, type: v.type, text: v.text, createdAt: ms, r: v.r || 0 };
+        }));
+      }, (e) => { console.error(e); showError("Could not load clues. Check your Firebase settings and rules."); });
+    },
+    add(clue) {
+      return fs.addDoc(col, {
+        group: clue.group, type: clue.type, text: clue.text, r: clue.r,
+        createdAt: fs.serverTimestamp()
+      });
+    }
+  };
+}
+
+function startDemo() {
+  const KEY = "clue-board-demo";
+  const bc = "BroadcastChannel" in window ? new BroadcastChannel(KEY) : null;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
+  const save = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch {} };
+  let listener = () => {};
+  if (bc) bc.onmessage = () => listener(load());
+  return {
+    subscribe(cb) { listener = cb; cb(load()); return () => {}; },
+    async add(clue) {
+      const all = load();
+      all.unshift({ ...clue, id: String(Date.now()) + Math.random().toString(16).slice(2), createdAt: Date.now() });
+      save(all);
+      listener(all);
+      if (bc) bc.postMessage("changed");
+    }
+  };
+}
+
+/* ---------- Rendering ---------- */
+function timeAgo(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + " min ago";
+  const h = Math.round(m / 60);
+  if (h < 24) return h + " hr ago";
+  return new Date(ms).toLocaleDateString();
+}
+
+function render() {
+  const board = $("board");
+  const shown = clues.filter((c) => filter === "all" || c.type === filter);
+  board.replaceChildren();
+  for (const c of shown) {
+    if (!TYPES[c.type]) continue;
+    const el = document.createElement("article");
+    el.className = "note";
+    el.style.setProperty("--c", `var(--${c.type})`);
+    el.style.setProperty("--r", (c.r || 0) + "deg");
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const g = document.createElement("span"); g.textContent = "Group " + c.group.replace(/^group\s*/i, "");
+    const t = document.createElement("span"); t.textContent = TYPES[c.type];
+    meta.append(g, t);
+
+    const body = document.createElement("div");
+    body.className = "body"; body.textContent = c.text;
+
+    const when = document.createElement("div");
+    when.className = "when-posted"; when.textContent = timeAgo(c.createdAt);
+
+    el.append(meta, body, when);
+    board.append(el);
+  }
+  $("empty").hidden = shown.length > 0;
+  $("count").textContent = clues.length + (clues.length === 1 ? " clue" : " clues") + " on the wall";
+}
+
+function showError(msg) { $("err").textContent = msg; }
+
+/* ---------- UI wiring ---------- */
+document.querySelectorAll("[data-filter]").forEach((b) => {
+  b.addEventListener("click", () => {
+    filter = b.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  });
+});
+
+const dlg = $("dlg");
+$("openForm").addEventListener("click", () => {
+  $("err").textContent = "";
+  try { $("group").value = sessionStorage.getItem("clue-group") || $("group").value; } catch {}
+  dlg.showModal();
+  $("group").focus();
+});
+$("cancel").addEventListener("click", () => dlg.close());
+$("text").addEventListener("input", () => { $("chars").textContent = $("text").value.length; });
+
+let lastPost = 0;
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const group = $("group").value.trim();
+  const typeEl = document.querySelector('input[name="type"]:checked');
+  const text = $("text").value.trim();
+  if (!group) return showError("Enter your group number.");
+  if (!typeEl) return showError("Pick a clue type.");
+  if (!text) return showError("Write your clue.");
+  const wait = CONFIG.cooldownSeconds * 1000 - (Date.now() - lastPost);
+  if (wait > 0) return showError(`Hold on. You can pin another clue in ${Math.ceil(wait / 1000)}s.`);
+
+  const btn = $("post");
+  btn.disabled = true; showError("");
+  try {
+    await backend.add({
+      group: group.slice(0, 30),
+      type: typeEl.value,
+      text: text.slice(0, 280),
+      r: Math.round((Math.random() * 6 - 3) * 10) / 10
+    });
+    lastPost = Date.now();
+    try { sessionStorage.setItem("clue-group", group); } catch {}
+    $("text").value = ""; $("chars").textContent = "0";
+    document.querySelectorAll('input[name="type"]').forEach((r) => (r.checked = false));
+    dlg.close();
+  } catch (err) {
+    console.error(err);
+    showError("Your clue didn't post. Check your connection and try again.");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ---------- Start ---------- */
+(async function init() {
+  const configured = CONFIG.firebase.apiKey && CONFIG.firebase.projectId;
+  if (configured) {
+    try { backend = await startFirebase(); }
+    catch (e) { console.error(e); backend = startDemo(); $("demoBanner").hidden = false; }
+  } else {
+    backend = startDemo();
+    $("demoBanner").hidden = false;
+  }
+  backend.subscribe((list) => { clues = list; render(); });
+  render();
+  setInterval(render, 60000); // refresh "x min ago"
+})();
+</script>
+</body>
+</html>

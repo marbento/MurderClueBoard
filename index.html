@@ -98,12 +98,20 @@
     transform: rotate(var(--r));
     animation: stick .25s ease-out;
   }
-  .note::before { /* pin */
-    content: ""; position: absolute; top: 8px; left: 50%; width: 12px; height: 12px;
-    margin-left: -6px; border-radius: 50%;
+  .pin {
+    position: absolute; top: 0; left: 50%; width: 40px; height: 40px; margin-left: -20px;
+    padding: 0; border: none; background: none; cursor: pointer;
+  }
+  .pin::before {
+    content: ""; position: absolute; top: 9px; left: 13px; width: 14px; height: 14px;
+    border-radius: 50%;
     background: radial-gradient(circle at 35% 35%, #ff8a7a, var(--pin) 60%);
     box-shadow: 0 2px 3px rgba(0,0,0,.45);
+    transition: transform .15s;
   }
+  .pin:hover::before, .pin:focus-visible::before { transform: scale(1.4); }
+  .pin:focus-visible { outline: 3px solid var(--ink); outline-offset: -6px; border-radius: 50%; }
+  .note.removing { opacity: 0; transform: rotate(var(--r)) translateY(14px) scale(.96); transition: all .25s; }
   @keyframes stick { from { transform: rotate(var(--r)) scale(1.08); opacity: 0; } }
   .meta { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; opacity: .8; }
   .body {
@@ -167,17 +175,17 @@
 
 <div class="toolbar" role="toolbar" aria-label="Filter clues">
   <button class="chip" aria-pressed="true" data-filter="all">All</button>
-  <button class="chip" data-type="Suspect"   style="--c:var(--who)"   aria-pressed="false" data-filter="who">Who</button>
-  <button class="chip" data-type="Weapon"  style="--c:var(--what)"  aria-pressed="false" data-filter="what">What</button>
-  <button class="chip" data-type="Time of Death"  style="--c:var(--when)"  aria-pressed="false" data-filter="when">When</button>
-  <button class="chip" data-type="Room of Crime" style="--c:var(--where)" aria-pressed="false" data-filter="where">Where</button>
-  <button class="chip" data-type="Motive"   style="--c:var(--why)"   aria-pressed="false" data-filter="why">Why</button>
+  <button class="chip" data-type="Suspect"   style="--c:var(--who)"   aria-pressed="false" data-filter="who">Suspect</button>
+  <button class="chip" data-type="Weapon"  style="--c:var(--what)"  aria-pressed="false" data-filter="what">Murder Weapon</button>
+  <button class="chip" data-type="Time of Death"  style="--c:var(--when)"  aria-pressed="false" data-filter="when">Time of Death</button>
+  <button class="chip" data-type="Room of Crime" style="--c:var(--where)" aria-pressed="false" data-filter="where">Room of Crime</button>
+  <button class="chip" data-type="Motive"   style="--c:var(--why)"   aria-pressed="false" data-filter="why">Motive</button>
   <span class="spacer"></span>
   <button class="add" id="openForm">Add a clue</button>
 </div>
 
 <div class="banner" id="demoBanner" hidden>
-  Demo mode: clues are only saved in this browser. Add your Firebase settings in the CONFIG block to share the board with everyone.
+  
 </div>
 
 <main>
@@ -195,11 +203,11 @@
     <fieldset>
       <legend>Clue type</legend>
       <div class="types">
-        <label><input type="radio" name="type" value="who"   required><span style="--c:var(--who)">Who</span></label>
-        <label><input type="radio" name="type" value="what"><span style="--c:var(--what)">What</span></label>
-        <label><input type="radio" name="type" value="when"><span style="--c:var(--when)">When</span></label>
-        <label><input type="radio" name="type" value="where"><span style="--c:var(--where)">Where</span></label>
-        <label><input type="radio" name="type" value="why"><span style="--c:var(--why)">Why</span></label>
+        <label><input type="radio" name="type" value="who"   required><span style="--c:var(--paper)">Suspect</span></label>
+        <label><input type="radio" name="type" value="what"><span style="--c:var(--what)">Murder Weapon</span></label>
+        <label><input type="radio" name="type" value="when"><span style="--c:var(--when)">Time of Death</span></label>
+        <label><input type="radio" name="type" value="where"><span style="--c:var(--where)">Room of Crime</span></label>
+        <label><input type="radio" name="type" value="why"><span style="--c:var(--why)">Motive</span></label>
       </div>
     </fieldset>
 
@@ -229,11 +237,23 @@ const CONFIG = {
     appId: ""
   },
   collection: "clues",
-  cooldownSeconds: 10      // minimum time between posts from one phone
+  cooldownSeconds: 10,     // minimum time between posts from one phone
+  // Who can remove a note by clicking its pin:
+  //   "anyone" = every visitor can remove any note
+  //   "mine"   = only notes posted from this phone/browser
+  //   "none"   = pins can't be clicked
+  removeMode: "anyone"
 };
 /* ================================================================ */
 
-const TYPES = { who: "Who", what: "What", when: "When", where: "Where", why: "Why" };
+// Labels shown on the notes (match the form buttons and filter chips)
+const TYPES = {
+  who: "Suspect",
+  what: "Murder Weapon",
+  when: "Time of Death",
+  where: "Room of Crime",
+  why: "Motive"
+};
 const $ = (id) => document.getElementById(id);
 
 document.title = CONFIG.title;
@@ -263,11 +283,15 @@ async function startFirebase() {
         }));
       }, (e) => { console.error(e); showError("Could not load clues. Check your Firebase settings and rules."); });
     },
-    add(clue) {
-      return fs.addDoc(col, {
+    async add(clue) {
+      const ref = await fs.addDoc(col, {
         group: clue.group, type: clue.type, text: clue.text, r: clue.r,
         createdAt: fs.serverTimestamp()
       });
+      return ref.id;
+    },
+    remove(id) {
+      return fs.deleteDoc(fs.doc(db, CONFIG.collection, id));
     }
   };
 }
@@ -283,12 +307,41 @@ function startDemo() {
     subscribe(cb) { listener = cb; cb(load()); return () => {}; },
     async add(clue) {
       const all = load();
-      all.unshift({ ...clue, id: String(Date.now()) + Math.random().toString(16).slice(2), createdAt: Date.now() });
+      const id = String(Date.now()) + Math.random().toString(16).slice(2);
+      all.unshift({ ...clue, id, createdAt: Date.now() });
+      save(all);
+      listener(all);
+      if (bc) bc.postMessage("changed");
+      return id;
+    },
+    async remove(id) {
+      const all = load().filter((c) => c.id !== id);
       save(all);
       listener(all);
       if (bc) bc.postMessage("changed");
     }
   };
+}
+
+/* ---------- Notes this browser posted (used by removeMode "mine") ---------- */
+const MINE_KEY = "clue-board-mine";
+const getMine = () => { try { return JSON.parse(localStorage.getItem(MINE_KEY)) || []; } catch { return []; } };
+const addMine = (id) => { try { localStorage.setItem(MINE_KEY, JSON.stringify([...getMine(), id].slice(-200))); } catch {} };
+function canRemove(c) {
+  if (CONFIG.removeMode === "anyone") return true;
+  if (CONFIG.removeMode === "mine") return getMine().includes(c.id);
+  return false;
+}
+
+async function removeClue(c, el) {
+  el.classList.add("removing");
+  try {
+    await backend.remove(c.id);
+  } catch (err) {
+    console.error(err);
+    el.classList.remove("removing");
+    alert("Couldn't remove that clue. Check your connection and your Firestore rules.");
+  }
 }
 
 /* ---------- Rendering ---------- */
@@ -326,6 +379,21 @@ function render() {
     when.className = "when-posted"; when.textContent = timeAgo(c.createdAt);
 
     el.append(meta, body, when);
+
+    if (canRemove(c)) {
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.className = "pin";
+      pin.title = "Remove this clue";
+      pin.setAttribute("aria-label", "Remove this clue");
+      pin.addEventListener("click", () => removeClue(c, el));
+      el.prepend(pin);
+    } else {
+      const pin = document.createElement("span");
+      pin.className = "pin";
+      pin.style.cssText = "pointer-events:none;cursor:default";
+      el.prepend(pin);
+    }
     board.append(el);
   }
   $("empty").hidden = shown.length > 0;
@@ -368,12 +436,14 @@ $("form").addEventListener("submit", async (e) => {
   const btn = $("post");
   btn.disabled = true; showError("");
   try {
-    await backend.add({
+    const newId = await backend.add({
       group: group.slice(0, 30),
       type: typeEl.value,
       text: text.slice(0, 280),
       r: Math.round((Math.random() * 6 - 3) * 10) / 10
     });
+    addMine(newId);
+    render();
     lastPost = Date.now();
     try { sessionStorage.setItem("clue-group", group); } catch {}
     $("text").value = ""; $("chars").textContent = "0";
